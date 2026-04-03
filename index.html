@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Town Border Announcer</title>
-    <!-- Turf.js is the magic library that does the Point-in-Polygon math in the browser -->
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -14,7 +13,6 @@
         <h1 class="text-3xl font-bold mb-2 text-blue-400">NJ Border Announcer</h1>
         <p class="text-gray-400 text-sm mb-6">Drive around and hear when you cross a town line.</p>
 
-        <!-- Step 1: Load the Map Data -->
         <div id="setup-section" class="mb-6">
             <div class="bg-gray-700 p-4 rounded-xl border border-gray-600 mb-4 text-center">
                 <p class="text-sm text-gray-300 mb-4">Click below to download the map data into your phone's memory.</p>
@@ -26,7 +24,6 @@
             <p id="load-status" class="text-yellow-400 text-sm font-medium hidden">Downloading map data...</p>
         </div>
 
-        <!-- Step 2: The Dashboard -->
         <div id="dashboard" class="hidden">
             <div class="mb-6 p-6 bg-gray-900 rounded-xl border border-gray-700 shadow-inner">
                 <p class="text-gray-400 uppercase tracking-wider text-xs font-bold mb-1">Current Town</p>
@@ -38,7 +35,6 @@
                 <p>Lng: <span id="lng-display">--</span></p>
             </div>
 
-            <!-- Browsers require a user to click a button before allowing Text-To-Speech audio to play -->
             <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-6 rounded-xl transition transform active:scale-95 shadow-lg">
                 ▶ Start Trip & Enable Audio
             </button>
@@ -50,7 +46,7 @@
 
     <script>
         let geojsonData = null;
-        let currentTown = null; // Reverted back for real-world use!
+        let currentTown = null;
         let watchId = null;
 
         const loadMapBtn = document.getElementById('load-map-btn');
@@ -63,7 +59,6 @@
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
 
-        // --- 1. AUTO FETCH MAP DATA ---
         loadMapBtn.addEventListener('click', async function() {
             loadStatus.classList.remove('hidden');
             loadStatus.innerText = "Downloading map data (might take a second)...";
@@ -71,7 +66,6 @@
             loadMapBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
-                // IMPORTANT: Ensure this matches your exact GeoJSON filename in your folder!
                 const response = await fetch('Municipal_Boundaries_of_NJ.geojson'); 
                 if (!response.ok) throw new Error("File not found");
                 
@@ -93,13 +87,29 @@
             }
         });
 
-        // --- 2. TEXT TO SPEECH ---
+        let availableVoices = [];
+        window.speechSynthesis.onvoiceschanged = () => {
+            availableVoices = window.speechSynthesis.getVoices();
+        };
+
         function announceTown(townName) {
-            // Check if Speech API is available
             if ('speechSynthesis' in window) {
                 const utterance = new SpeechSynthesisUtterance(`Welcome to ${townName}`);
-                // Optional: tweaking the voice settings
-                utterance.rate = 0.9; 
+                
+                if (availableVoices.length === 0) {
+                    availableVoices = window.speechSynthesis.getVoices();
+                }
+
+                let preferredVoice = availableVoices.find(voice => voice.name.includes('Google US English'))
+                                  || availableVoices.find(voice => voice.name.includes('Google') && voice.lang.includes('en-US'))
+                                  || availableVoices.find(voice => voice.name.includes('Samantha')) // Best iOS fallback
+                                  || availableVoices.find(voice => voice.lang === 'en-US');
+                
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                }
+
+                utterance.rate = 0.95;
                 utterance.pitch = 1.0;
                 window.speechSynthesis.speak(utterance);
             } else {
@@ -107,27 +117,20 @@
             }
         }
 
-        // --- 3. THE SPATIAL MATH (The Brains) ---
         function checkLocation(lat, lng) {
             if (!geojsonData) return;
 
-            // Turf.js requires coordinates in [Longitude, Latitude] format
             const pt = turf.point([lng, lat]);
             let foundTown = "Unknown Territory";
 
-            // Loop through the town polygons
             for (let feature of geojsonData.features) {
-                // Point in polygon math check
                 if (turf.booleanPointInPolygon(pt, feature)) {
-                    // NJGIN data uses 'NAME'. If you use OpenStreetMap, it might be 'name'
                     foundTown = feature.properties.NAME || feature.properties.name || "Unknown Town";
                     break;
                 }
             }
 
-            // --- 4. STATE MANAGEMENT ---
             if (foundTown !== currentTown) {
-                // We only announce if currentTown wasn't null (meaning it's not the very first load)
                 if (currentTown !== null && foundTown !== "Unknown Territory") {
                     announceTown(foundTown);
                 }
@@ -136,9 +139,7 @@
             }
         }
 
-        // --- 5. GPS TRACKING ---
         startBtn.addEventListener('click', () => {
-            // Prime the audio engine (browsers need this attached to a click event)
             if ('speechSynthesis' in window) {
                 let silentUtterance = new SpeechSynthesisUtterance('');
                 silentUtterance.volume = 0;
@@ -149,18 +150,15 @@
             stopBtn.classList.remove('hidden');
             townDisplay.innerText = "Waiting for GPS...";
 
-            // Start watching the GPS hardware
             if ("geolocation" in navigator) {
                 watchId = navigator.geolocation.watchPosition(
                     (position) => {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
                         
-                        // Update UI
                         latDisplay.innerText = lat.toFixed(5);
                         lngDisplay.innerText = lng.toFixed(5);
 
-                        // Run the math!
                         checkLocation(lat, lng);
                     },
                     (error) => {
@@ -168,7 +166,7 @@
                         townDisplay.innerText = "GPS Error/Denied";
                     },
                     {
-                        enableHighAccuracy: true, // Use the real GPS chip, not just cell towers
+                        enableHighAccuracy: true, // Use the real GPS chip
                         maximumAge: 0,
                         timeout: 5000
                     }
