@@ -66,8 +66,7 @@
             loadMapBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
-                // const response = await fetch('Municipal_Boundaries_of_NJ.geojson');
-                const response = await fetch('asdsad.geojson'); 
+                const response = await fetch('Municipal_Boundaries_of_NJ.geojson'); 
                 if (!response.ok) throw new Error("File not found");
                 
                 geojsonData = await response.json();
